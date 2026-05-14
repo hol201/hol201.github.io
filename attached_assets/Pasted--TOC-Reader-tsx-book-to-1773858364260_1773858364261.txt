@@ -1,0 +1,102 @@
+Нужно исправить оглавление (TOC) в Reader.tsx БЕЗ удаления существующей логики.
+
+ПРОБЛЕМА:
+- book.toc не совпадает с DOM
+- jumpToElement работает неточно
+- ScrollArea не даёт нормальный скролл
+
+РЕШЕНИЕ: синхронизировать TOC с реальными заголовками DOM
+
+СДЕЛАЙ:
+
+1. СОЗДАЙ state:
+const [tocItems, setTocItems] = useState<{id: string, title: string, level: number}[]>([]);
+
+
+2. ДОБАВЬ useEffect после рендера контента:
+
+useEffect(() => {
+  if (!contentRef.current) return;
+
+  const headings = Array.from(
+    contentRef.current.querySelectorAll("h1, h2, h3")
+  );
+
+  const generated = headings.map((el, i) => {
+    const level = Number(el.tagName.replace("H", ""));
+    const id = el.id || `heading-${i}`;
+
+    el.id = id;
+
+    return {
+      id,
+      title: el.textContent || `Section ${i + 1}`,
+      level,
+    };
+  });
+
+  setTocItems(generated);
+}, [book.content]);
+
+
+3. ИСПРАВЬ jumpToElement:
+
+ЗАМЕНИ ВСЮ ЛОГИКУ ВНУТРИ НА:
+
+const element = contentRef.current?.querySelector(`#${id}`);
+if (!element) return;
+
+element.classList.add("highlight");
+setTimeout(() => element.classList.remove("highlight"), 2000);
+
+const left = element.offsetLeft;
+const page = Math.floor(left / columnWidth);
+
+if (page >= 0 && page < totalPages) {
+  setCurrentPage(page);
+  setShowToc(false);
+  setShowSearch(false);
+  setShowControls(false);
+}
+
+
+4. ИСПРАВЬ TOC UI:
+
+НАЙДИ:
+<ScrollArea className="flex-1 p-4">
+
+ЗАМЕНИ НА:
+<div className="flex-1 p-4 overflow-y-auto max-h-[70vh]">
+
+И ЗАКРОЙ div вместо ScrollArea
+
+
+5. ВМЕСТО book.toc используй tocItems:
+
+ЗАМЕНИ:
+
+book.toc.map(...)
+
+НА:
+
+tocItems.map((item) => (
+  <Button
+    key={item.id}
+    variant="ghost"
+    className="w-full justify-start text-left font-normal"
+    style={{ paddingLeft: `${(item.level - 1) * 16 + 16}px` }}
+    onClick={() => jumpToElement(item.id)}
+  >
+    {item.title}
+  </Button>
+))
+
+
+6. ЕСЛИ tocItems пуст — fallback оставить (Chapter 1,2...)
+
+НИЧЕГО ДРУГОГО НЕ ТРОГАТЬ
+
+ОЖИДАЕМЫЙ РЕЗУЛЬТАТ:
+- оглавление скроллится
+- переход всегда точный
+- работает даже без book.toc
